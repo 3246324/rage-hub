@@ -68,6 +68,7 @@ local holdAtt, alignP, alignO = nil, nil, nil
 local FARM_STATE = "off"
 local farmBusy = false
 local isPremium = false
+local keyStatusRef = nil  -- forward ref for premium status paragraph
 local KEY_API_URL = "http://51.79.44.111:9478"
 
 local httpRequest = (typeof(request) == "function" and request)
@@ -108,6 +109,7 @@ local function validateKey(key, callback)
             if success and data and data.valid then
                 isPremium = true
                 pcall(function() writefile("MM2Hub/premium.key", key) end)
+                pcall(unlockPremiumUI)
                 callback(true, data.message or "Key activated")
             elseif success and data then
                 callback(false, data.error or "Invalid key")
@@ -1717,9 +1719,14 @@ local function panicRestore()
     print("[Rage] PANIC restored — features re-enabled")
 end
 
+-- premium element registry — refreshed when premium activates
+local premiumElements = {}
+
 local function premiumToggle(parent, flag, opts, realCallback)
+    local origTitle = opts.Title
+    local origDesc  = opts.Description or ""
     if not isPremium then
-        opts.Title = opts.Title .. " 🔒"
+        opts.Title = origTitle .. " 🔒"
         opts.Description = "Premium — unlock with a key"
         opts.Default = false
     end
@@ -1733,12 +1740,15 @@ local function premiumToggle(parent, flag, opts, realCallback)
         realCallback(v)
     end
     toggle = parent:AddToggle(flag, opts)
+    table.insert(premiumElements, { element = toggle, type = "toggle", title = origTitle, desc = origDesc })
     return toggle
 end
 
 local function premiumSlider(parent, flag, opts, realCallback)
+    local origTitle = opts.Title
+    local origDesc  = opts.Description or ""
     if not isPremium then
-        opts.Title = opts.Title .. " 🔒"
+        opts.Title = origTitle .. " 🔒"
         opts.Description = "Premium — unlock with a key"
     end
     local init = true
@@ -1753,7 +1763,30 @@ local function premiumSlider(parent, flag, opts, realCallback)
     end
     local slider = parent:AddSlider(flag, opts)
     init = false
+    table.insert(premiumElements, { element = slider, type = "slider", title = origTitle, desc = origDesc })
     return slider
+end
+
+local function unlockPremiumUI()
+    for _, entry in ipairs(premiumElements) do
+        pcall(function()
+            if entry.element.SetTitle then
+                entry.element:SetTitle(entry.title)
+            end
+            if entry.element.SetDesc then
+                entry.element:SetDesc(entry.desc)
+            elseif entry.element.SetDescription then
+                entry.element:SetDescription(entry.desc)
+            end
+        end)
+    end
+    -- refresh the key status paragraph if the UI has been built
+    if keyStatusRef then
+        pcall(function()
+            keyStatusRef:SetTitle("✅ Premium Active")
+            keyStatusRef:SetDesc("All features unlocked.")
+        end)
+    end
 end
 
 print("[Rage] Core logic loaded, building UI...")
@@ -2283,6 +2316,7 @@ local keyStatus = secPremium:AddParagraph({
     Title = isPremium and "✅ Premium Active" or "🔒 Free Version",
     Content = isPremium and "All features unlocked." or "Enter a key to unlock premium features.",
 })
+keyStatusRef = keyStatus
 local keyInput = ""
 secPremium:AddInput("PremiumKey", {
     Title = "License Key",
@@ -2307,7 +2341,7 @@ secPremium:AddButton({
             if valid then
                 Fluent:Notify({ Title = "Premium Activated", Content = msg, Type = "Success", Duration = 5 })
                 keyStatus:SetTitle("✅ Premium Active")
-                keyStatus:SetDesc("All features unlocked. Restart to refresh toggle labels.")
+                keyStatus:SetDesc("All features unlocked.")
             else
                 Fluent:Notify({ Title = "Key Failed", Content = msg, Type = "Error", Duration = 5 })
             end
