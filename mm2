@@ -925,7 +925,22 @@ local function farmStep(dt)
         end
 
         if cfg.FarmMethod == "Teleport" and not moveFlee then
-            setHold(moveGoal)
+            -- chunked teleport: step in <=35 stud increments to avoid invalid-position kick
+            local TP_CHUNK = 35
+            local from = hrp.Position
+            local dist = (moveGoal - from).Magnitude
+            if dist > TP_CHUNK then
+                local dir = (moveGoal - from).Unit
+                local steps = math.ceil(dist / TP_CHUNK)
+                for i = 1, steps do
+                    if not hrp or not hrp.Parent or not FARM_ENABLED then break end
+                    local pos = (i == steps) and moveGoal or (from + dir * (TP_CHUNK * i))
+                    setHold(pos)
+                    RunService.Heartbeat:Wait()
+                end
+            else
+                setHold(moveGoal)
+            end
             stuckCheckPos = nil
             if moveIsGun then
                 local drop = findGunDrop()
@@ -1889,20 +1904,18 @@ secAim:AddToggle("SilentAim", {
     Default = false,
     Callback = function(v) cfg.SilentAim = v end,
 })
-secAim:AddToggle("GunAura", {
+premiumToggle(secAim, "GunAura", {
     Title = "Gun Aura",
     Icon = "solar/radar-bold",
     Description = "Auto-fire at murderer/zombies when in range",
     Default = false,
-    Callback = function(v) cfg.GunAura = v end,
-})
-secAim:AddSlider("GunAuraRange", {
+}, function(v) cfg.GunAura = v end)
+premiumSlider(secAim, "GunAuraRange", {
     Title = "Gun Aura Range",
     Icon = "solar/ruler-bold",
     Description = "Max distance to auto-fire (studs)",
     Default = 150, Min = 20, Max = 500, Rounding = 0,
-    Callback = function(v) cfg.GunAuraRange = v end,
-})
+}, function(v) cfg.GunAuraRange = v end)
 secAim:AddButton({
     Title = "Shoot Murderer Now",
     Icon = "solar/target-bold",
@@ -1987,10 +2000,21 @@ secFarmCore:AddSlider("Speed", {
 secFarmCore:AddDropdown("FarmMethod", {
     Title = "Farm Method",
     Icon = "solar/route-bold",
-    Values = {"Underground Tween", "Teleport"},
+    Values = {"Underground Tween", "Teleport 🔒"},
     Default = "Underground Tween",
-    Description = "Tween = smooth lerp, Teleport = instant warp",
-    Callback = function(v) cfg.FarmMethod = v end,
+    Description = "Tween = smooth lerp, Teleport = instant warp (Premium)",
+    Callback = function(v)
+        if v == "Teleport 🔒" then
+            if not isPremium then
+                Fluent:Notify({ Title = "Premium Only", Content = "Teleport method requires a premium key.", Type = "Warning", Duration = 3 })
+                cfg.FarmMethod = "Underground Tween"
+                return
+            end
+            cfg.FarmMethod = "Teleport"
+        else
+            cfg.FarmMethod = v
+        end
+    end,
 })
 secFarmCore:AddDropdown("CoinTarget", {
     Title = "Coin Targeting",
@@ -2289,7 +2313,7 @@ secPremium:AddButton({
 local secPurchase = Tabs.Purchase:AddSection("Get Premium", "solar/star-bold")
 secPurchase:AddParagraph({
     Title = "Unlock Premium Features",
-    Content = "Coin Aura, Murderer Avoidance, XP Farm, Sheriff Fling and more.\nLifetime access — $5 USD one-time purchase.",
+    Content = "Gun Aura, Teleport Farm, Coin Aura, Murderer Avoidance, XP Farm and more.\nLifetime access — $5 USD one-time purchase.",
 })
 secPurchase:AddDiscord({ InviteCode = "JzgMkhmDW7" })
 secPurchase:AddButton({
