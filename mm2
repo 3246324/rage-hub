@@ -17,6 +17,7 @@ local Players          = game:GetService("Players")
 local RunService       = game:GetService("RunService")
 local Workspace        = game:GetService("Workspace")
 local ReplicatedStorage= game:GetService("ReplicatedStorage")
+local HttpService      = game:GetService("HttpService")
 
 local player    = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
@@ -87,38 +88,59 @@ local function getHWID()
     return ok and id or "unknown"
 end
 
-local function validateKey(key, callback)
-    if not httpRequest then
-        callback(false, "HTTP not supported by this executor")
-        return
+local function parseValidateResponse(body, key, callback)
+    local success, data = pcall(function()
+        return HttpService:JSONDecode(body)
+    end)
+    if success and data and data.valid then
+        isPremium = true
+        pcall(function() writefile("MM2Hub/premium.key", key) end)
+        pcall(unlockPremiumUI)
+        callback(true, data.message or "Key activated")
+        return true
+    elseif success and data then
+        callback(false, data.error or "Invalid key")
+        return true
     end
+    return false
+end
+
+local function validateKey(key, callback)
     local hwid = getHWID()
     task.spawn(function()
-        local ok, result = pcall(function()
-            return httpRequest({
-                Url = KEY_API_URL .. "/validate",
-                Method = "POST",
-                Headers = { ["Content-Type"] = "application/json" },
-                Body = HttpService:JSONEncode({ key = key, hwid = hwid }),
-            })
-        end)
-        if ok and result and result.Body then
-            local success, data = pcall(function()
-                return HttpService:JSONDecode(result.Body)
+        -- Method 1: executor httpRequest (POST)
+        if httpRequest then
+            local ok, result = pcall(function()
+                return httpRequest({
+                    Url = KEY_API_URL .. "/validate",
+                    Method = "POST",
+                    Headers = { ["Content-Type"] = "application/json" },
+                    Body = HttpService:JSONEncode({ key = key, hwid = hwid }),
+                })
             end)
-            if success and data and data.valid then
-                isPremium = true
-                pcall(function() writefile("MM2Hub/premium.key", key) end)
-                pcall(unlockPremiumUI)
-                callback(true, data.message or "Key activated")
-            elseif success and data then
-                callback(false, data.error or "Invalid key")
+            if ok and result and result.Body then
+                if parseValidateResponse(result.Body, key, callback) then return end
+                print("[Rage] POST response parse failed, body: " .. tostring(result.Body):sub(1, 200))
             else
-                callback(false, "Bad response from key server")
+                print("[Rage] POST request failed: ok=" .. tostring(ok) .. " err=" .. tostring(result))
             end
         else
-            callback(false, "Could not reach key server")
+            print("[Rage] No httpRequest found, skipping POST")
         end
+
+        -- Method 2: game:HttpGet (GET fallback for executor compat)
+        local getUrl = KEY_API_URL .. "/validate?key=" .. HttpService:UrlEncode(key) .. "&hwid=" .. HttpService:UrlEncode(hwid)
+        local ok2, body = pcall(function()
+            return game:HttpGet(getUrl)
+        end)
+        if ok2 and body and #body > 0 then
+            if parseValidateResponse(body, key, callback) then return end
+            print("[Rage] GET response parse failed, body: " .. tostring(body):sub(1, 200))
+        else
+            print("[Rage] GET fallback failed: ok=" .. tostring(ok2) .. " err=" .. tostring(body))
+        end
+
+        callback(false, "Could not reach key server")
     end)
 end
 
