@@ -639,6 +639,8 @@ local function hookRoundEvents()
     end))
     track(g.RoundStart.OnClientEvent:Connect(function()
         inRound = true; bagDone = false; roundSpawn = nil; flungOk = {}; gunHuntStart = 0
+        resetScannerFlag() -- new map may have scanners, re-disable next farm tick
+        if FARM_ENABLED then task.defer(disableScanners) end
     end))
     track(g.GameOver.OnClientEvent:Connect(onRoundEnd))
     track(g.RoundEndFade.OnClientEvent:Connect(onRoundEnd))
@@ -889,7 +891,7 @@ local function farmStep(dt)
 
     if FARM_STATE == "arrive" then
         grabFrames = grabFrames + 1
-        if grabFrames < 3 then return end
+        if grabFrames < 6 then return end
         local fired = 0
         if moveGrabCoin and moveGrabCoin.Parent then
             fireCoin(moveGrabCoin); fired = 1
@@ -925,8 +927,9 @@ local function farmStep(dt)
         end
 
         if cfg.FarmMethod == "Teleport" and not moveFlee then
-            -- chunked teleport: step in <=35 stud increments to avoid invalid-position kick
-            local TP_CHUNK = 35
+            -- chunked teleport: step in small increments with pacing to avoid velocity kick
+            local TP_CHUNK = 20
+            local TP_FRAMES = 3 -- heartbeat waits per step (~500 studs/sec at 60fps)
             local from = hrp.Position
             local dist = (moveGoal - from).Magnitude
             if dist > TP_CHUNK then
@@ -936,11 +939,13 @@ local function farmStep(dt)
                     if not hrp or not hrp.Parent or not FARM_ENABLED then break end
                     local pos = (i == steps) and moveGoal or (from + dir * (TP_CHUNK * i))
                     setHold(pos)
-                    RunService.Heartbeat:Wait()
+                    for _ = 1, TP_FRAMES do RunService.Heartbeat:Wait() end
                 end
             else
                 setHold(moveGoal)
             end
+            -- dwell at destination so server registers position before pickup
+            for _ = 1, 4 do RunService.Heartbeat:Wait() end
             stuckCheckPos = nil
             if moveIsGun then
                 local drop = findGunDrop()
