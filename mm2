@@ -56,7 +56,7 @@ local isInfection, findClosestRole, getMurdererPos
 print("[Rage] Services loaded")
 
 local FARM_ENABLED = false
-local inRound, coinsCollected, bagCapacity = false, 0, 50
+local inRound, coinsCollected, bagCapacity = false, 0, 40  -- default 40, elite gamepass raises to 50 via CoinCollected cap
 local bagDone, holding, roundSpawn = false, false, nil
 local lastAura, lastFling = 0, 0
 local flungOk = {}
