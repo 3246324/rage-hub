@@ -30,7 +30,7 @@ local Gameplay = ReplicatedStorage.Remotes.Gameplay
 local Extras   = ReplicatedStorage.Remotes.Extras
 
 local cfg = {
-    COIN_OFFSET = -3.5, TWEEN_SPEED = 17, SCAN_DELAY = 0.12,
+    COIN_OFFSET = -3.5, TWEEN_SPEED = 17, SCAN_DELAY = 0.35, COIN_PAUSE = 0.6,
     SMOOTH_CAMERA = true, CAM_SMOOTH = 0.12,
     AURA_RANGE = 14, COINS_PER_SWEEP = 8, SWEEP_INTERVAL = 0.5,
     FarmMethod = "Underground Tween",
@@ -940,6 +940,13 @@ local function farmStep(dt)
             end
         end
         moveGrabCoin = nil
+        -- pause between coins so it doesn't look instant
+        if cfg.COIN_PAUSE > 0 then
+            local waited = 0
+            while waited < cfg.COIN_PAUSE and FARM_ENABLED and inRound do
+                waited = waited + RunService.Heartbeat:Wait()
+            end
+        end
         scanAccum = 0
         FARM_STATE = "scan"
         return
@@ -953,7 +960,7 @@ local function farmStep(dt)
         if cfg.FarmMethod == "Teleport" and not moveFlee then
             -- chunked teleport: step in small increments with pacing to avoid velocity kick
             local TP_CHUNK = 20
-            local TP_FRAMES = 3 -- heartbeat waits per step (~500 studs/sec at 60fps)
+            local TP_FRAMES = 5 -- heartbeat waits per step (slower to look natural)
             local from = hrp.Position
             local dist = (moveGoal - from).Magnitude
             if dist > TP_CHUNK then
@@ -969,7 +976,7 @@ local function farmStep(dt)
                 setHold(moveGoal)
             end
             -- dwell at destination so server registers position before pickup
-            for _ = 1, 4 do RunService.Heartbeat:Wait() end
+            for _ = 1, 8 do RunService.Heartbeat:Wait() end
             stuckCheckPos = nil
             if moveIsGun then
                 local drop = findGunDrop()
@@ -2056,6 +2063,13 @@ secFarmCore:AddSlider("Speed", {
     Description = "Movement speed between coins (studs/s)",
     Default = 17, Min = 8, Max = 30, Rounding = 0,
     Callback = function(v) cfg.TWEEN_SPEED = v end,
+})
+secFarmCore:AddSlider("CoinPause", {
+    Title = "Coin Pause",
+    Icon = "solar/clock-circle-bold",
+    Description = "Delay between collecting each coin (seconds)",
+    Default = 0.6, Min = 0, Max = 2, Rounding = 1,
+    Callback = function(v) cfg.COIN_PAUSE = v end,
 })
 secFarmCore:AddDropdown("FarmMethod", {
     Title = "Farm Method",
